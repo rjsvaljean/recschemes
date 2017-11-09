@@ -1,12 +1,15 @@
 {-# LANGUAGE DeriveFunctor #-}
 
 module Part4
-  ( change
+  ( change,
+    changeCombinations
   ) where
 
 import           Prelude       hiding (lookup)
 
 import           Control.Arrow
+import qualified Data.Set      as Set
+import qualified Data.List     as List (partition, sort)
 
 newtype Term f = In { out :: f (Term f) }
 
@@ -52,7 +55,28 @@ change amt = histo go (expand amt) where
     results    = sum (map (lookup attr) remaining)
     in zeroCount + results
 
-lookup :: Attr Nat a -> Int -> a
-lookup cache 0 = attribute cache
-lookup cache n = lookup inner (n - 1) where (Next inner) = hole cache
+changeCombinations :: Cent -> Set.Set [Cent]
+changeCombinations amt = histo go (expand amt) where
+  go :: Nat (Attr Nat (Set.Set [Cent])) -> Set.Set [Cent]
+  go Zero = Set.empty
+  go curr @(Next ann) = Set.union singletonChange others where
+    (singletonChange, others) = (
+      Set.map (const [given]) zeroes,
+      Set.unions(map lkp (Set.toList nonZeroes))) where
+      lkp (subtracted, i) = Set.map List.sort . Set.map (++ [subtracted]) $ lookup ann i
+      (zeroesList, nonZeroesList) = List.partition (\x -> snd x == 0) remaining where
+        remaining = map (\c -> (c, given - c)) validCoins where
+          validCoins = filter (<= given) coins
+      (zeroes, nonZeroes) = (Set.fromList zeroesList, Set.fromList nonZeroesList)
+      given = compress curr
 
+lookup :: Attr Nat a -> Int -> a
+lookup cache n = last $ go [] cache where
+  go :: [a] -> Attr Nat a -> [a]
+  go window Attr{hole = Zero} = window
+  go window Attr{hole = (Next tail), attribute = a} =
+    go (newWindow (length window)) tail where
+      newWindow l
+        | l < n = a : window
+        | l == n && l /= 0 = a : (init window)
+        | otherwise = window
